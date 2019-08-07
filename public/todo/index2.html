@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Todo List</title>
+    <link rel="stylesheet" href="./assets/css/base.css">
+    <link rel="stylesheet" href="./assets/css/index.css">
+    <link rel="stylesheet" href="../js/nprogress/nprogress.css">
+</head>
+
+<body>
+    <section class="todoapp">
+        <header class="header">
+            <h1>todos</h1>
+            <input type="text" class="new-todo" placeholder="What needs to be done?" autofocus id="task">
+        </header>
+        <!-- This section should be hidden by default and shown when there are todos -->
+        <section class="main">
+            <input class="toggle-all" type="checkbox">
+            <!-- <label for="toggle-all">Mark all as complete</label> -->
+            <ul class="todo-list" id="todo-list">
+                <!-- These are here just to show the structure of the list items -->
+                <!-- List items should get the class `editing` when editing and `completed` when marked as completed -->
+            </ul>
+        </section>
+        <!-- This footer should hidden by default and shown when there are todos -->
+        <footer class="footer">
+            <!-- This should be `0 items left` by default -->
+            <span class="todo-count"><strong id="count">0</strong> item left</span>
+            <!-- Remove this if you don't implement routing -->
+            <ul class="filters">
+                <li>
+                    <a class="selected" href="javascript:;">All</a>
+                </li>
+                <li>
+                    <a href="javascript:;">Active</a>
+                </li>
+                <li>
+                    <a href="javascript:;">Completed</a>
+                </li>
+            </ul>
+            <!-- Hidden if no completed items are left ↓ -->
+            <button class="clear-completed">Clear completed</button>
+        </footer>
+    </section>
+    <script src="../js/jquery.min.js"></script>
+    <script src="../js/template-web.js"></script>
+    <script src="../js/nprogress/nprogress.js"></script>
+
+    <script type="text/html" id="taskTpl">
+        {{each tasks}}
+        <li class="{{$value.completed ? 'completed':''}}">
+            <div class="view">
+                <input class="toggle" type="checkbox" {{$value.completed ? 'checked': ''}}>
+                <label>{{$value.title}}</label>
+                <button class="destroy" data-id="{{$value._id}}"></button>
+            </div>
+            <input class="edit">
+        </li>
+        {{/each}}
+    </script>
+
+    <script>
+        // 要完成展示所有的任务的功能 
+        var taskAry = new Array;
+        // 获取ul标签
+        var taskBox = $('#todo-list');
+        // 获取input 
+        var taskInp = $('#task');
+        // 计算未完成任务数量
+        calcCount();
+        // 发送ajax语法 
+        $.ajax({
+            url: '/todo/task',
+            type: 'get',
+            success: function(res) {
+                // 先将res这个数组 赋值给taskAry 
+                taskAry = res;
+                render();
+                // 计算未完成任务数量
+                calcCount();
+            }
+        })
+
+        // 要完成 添加任务的功能 
+        taskInp.on('keyup', function(e) {
+                var keycode = e.keyCode;
+                var taskName = $(this).val().replace(/\s/g, '');
+                if (keycode == 13) {
+                    // 表示按下的是回车键 
+                    // 如果没有输入内容 
+                    if (taskName.trim().length == 0) {
+                        alert("没有输入任务");
+                        return;
+                    }
+                    // 如果输入的内容在任务中已经存在 
+                    // 根据我们输入的内容 去taskAry这个数组中查找是否有这个元素 find();
+                    let flag = taskAry.find(item => item.title == taskName);
+                    if (flag) {
+                        alert('任务已经存在');
+                        return;
+                    }
+
+                    // 我们就需要将这个任务添加到集合中 
+                    $.ajax({
+                        type: 'post',
+                        url: '/todo/addTask',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            title: taskName
+                        }),
+                        success: function(res) {
+                            taskAry.push(res);
+                            render();
+                            taskInp.val('');
+                            // 计算未完成任务数量
+                            calcCount();
+                        }
+                    })
+                }
+            })
+            //删除功能
+        taskBox.on('click', '.destroy', function() {
+
+            var id = $(this).attr('data-id');
+
+            $.ajax({
+                type: 'get',
+                url: '/todo/deleteTask',
+                data: {
+                    _id: id
+                },
+                success: function(res) {
+
+                    var index = taskAry.findIndex(item =>
+                            item._id == id
+                        )
+                        // var index = taskAry.findIndex(item => item._id == res._id);
+                        // console.log(index);
+                    taskAry.splice(index, 1);
+                    render();
+                    // 计算未完成任务数量
+                    calcCount();
+                }
+            })
+
+        })
+
+        //更改任务状态
+        taskBox.on('change', '.toggle', function() {
+            var status = $(this).prop('checked');
+            var id = $(this).next().next().attr('data-id');
+            // 向服务器发送ajax
+            $.ajax({
+                type: 'post',
+                url: '/todo/modifyTask',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    _id: id,
+                    completed: status
+                }),
+                success: function(res) {
+                    var check = taskAry.find(item => item._id == id);
+                    check.completed = res.completed;
+                    render();
+                    // 计算未完成任务数量
+                    calcCount();
+                }
+
+
+            });
+        });
+
+        // 先给label标签注册双击事件
+        taskBox.on('dblclick', 'label', function() {
+                // 找到它的爷爷元素 li 给其添加class=editing
+                $(this).parents('li').addClass('editing');
+                // $(this).parent().next() 找到当前元素的父元素然后再找父元素的下一个兄弟元素
+                $(this).parent().next().val($(this).text());
+                $(this).parent().next().focus();
+            })
+            // 给class为edit的这个元素注册失去焦点事件 
+        taskBox.on('blur', '.edit', function() {
+
+            // 要获取到失去焦点后的value属性值 
+            var newTaskName = $(this).val();
+            var id = $(this).siblings().find('button').attr('data-id');
+            // 发送ajax
+            $.ajax({
+                type: 'post',
+                url: '/todo/modifyTask',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    _id: id,
+                    title: newTaskName
+                }),
+                success: function(res) {
+                    // console.log(res);
+                    // 我们需要再次调用render()要渲染数据  我们需要更新数组中的元素的值 
+                    var task2 = taskAry.find(item => item._id == id);
+                    task2.title = res.title;
+                    render();
+                    // 计算未完成任务数量
+                    calcCount();
+                }
+
+            });
+        });
+
+
+        // 用于计算未完成任务的数量
+        function calcCount() {
+            // 存储结果的变量
+            var count = 0;
+            // 将未完成的任务过滤到一个新的数组中
+            var newAry = taskAry.filter(item => item.completed == false);
+            // 将新数组的长度赋值给count
+            count = newAry.length;
+            // 将未完成的任务数量显示在页面中
+            $('#count').text(count);
+
+        }
+
+        // 用于渲染模板 
+        function render() {
+            // 调用模板的template方法 
+            var str = template('taskTpl', {
+                    tasks: taskAry
+                })
+                // console.log(str);
+                // 把str这个字符串
+            taskBox.html(str);
+        }
+    </script>
+</body>
+
+</html>
